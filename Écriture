@@ -1,0 +1,572 @@
+/*
+ * Écriture Page — Akademisch Futuristisch v2
+ * Deux exercices d'écriture :
+ * 1. Construction de phrases : remettre les mots dans le bon ordre
+ * 2. Correction de texte libre (20-7000 caractères) par IA, avec feedback pédagogique
+ */
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import {
+  PenLine, Shuffle, CheckCircle2, XCircle, RotateCcw, ArrowRight,
+  Trophy, Zap, Send, Loader2, AlertTriangle, ThumbsUp, BookOpenCheck, Sparkles,
+} from 'lucide-react';
+import Layout from '@/components/Layout';
+import { SENTENCE_EXERCISES, LEVEL_COLORS, type LevelId } from '@/contexts/LearnContext';
+
+type Tab = 'phrases' | 'texte';
+const allLevels: LevelId[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+// ── Utilitaire : mélange un tableau (Fisher-Yates) ────────────────────────
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+interface WordChip {
+  key: string;
+  word: string;
+}
+
+function makeChips(words: string[]): WordChip[] {
+  return words.map((word, i) => ({ key: `${i}-${word}`, word }));
+}
+
+export default function Ecriture() {
+  const [tab, setTab] = useState<Tab>('phrases');
+
+  return (
+    <Layout>
+      <div className="container py-8 lg:py-12">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-1">
+            <Zap size={16} className="text-emerald-400" />
+            <span className="data-label">Writing Module</span>
+          </div>
+          <div className="flex items-center gap-3 mb-2">
+            <PenLine size={24} className="text-emerald-400" />
+            <h1 className="font-display text-2xl lg:text-3xl font-bold">Écriture</h1>
+          </div>
+          <p className="text-muted-foreground">
+            Construis des phrases allemandes dans le bon ordre, puis entraîne-toi à rédiger un texte
+            corrigé et commenté par notre tuteur IA.
+          </p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-8 border-b border-border">
+          <button
+            onClick={() => setTab('phrases')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              tab === 'phrases'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Shuffle size={16} />
+            Construction de phrases
+          </button>
+          <button
+            onClick={() => setTab('texte')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              tab === 'texte'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <BookOpenCheck size={16} />
+            Correction de texte
+          </button>
+        </div>
+
+        {tab === 'phrases' ? <SentenceBuilder /> : <WritingCheck />}
+      </div>
+    </Layout>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 1. CONSTRUCTION DE PHRASES
+// ══════════════════════════════════════════════════════════════════════════
+
+function SentenceBuilder() {
+  const [filterLevel, setFilterLevel] = useState<LevelId | 'all'>('all');
+  const [index, setIndex] = useState(0);
+  const [pool, setPool] = useState<WordChip[]>([]);
+  const [answer, setAnswer] = useState<WordChip[]>([]);
+  const [checked, setChecked] = useState(false);
+  const [score, setScore] = useState(0);
+  const [answered, setAnswered] = useState(0);
+
+  const exercises = useMemo(() => {
+    return filterLevel === 'all'
+      ? SENTENCE_EXERCISES
+      : SENTENCE_EXERCISES.filter(e => e.level === filterLevel);
+  }, [filterLevel]);
+
+  const current = exercises[index];
+
+  const setupExercise = useCallback((ex: typeof current) => {
+    if (!ex) return;
+    setPool(shuffle(makeChips(ex.words)));
+    setAnswer([]);
+    setChecked(false);
+  }, []);
+
+  useEffect(() => {
+    setupExercise(exercises[0]);
+    setIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterLevel]);
+
+  useEffect(() => {
+    setupExercise(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  const moveToAnswer = useCallback((chip: WordChip) => {
+    if (checked) return;
+    setPool(prev => prev.filter(c => c.key !== chip.key));
+    setAnswer(prev => [...prev, chip]);
+  }, [checked]);
+
+  const moveToPool = useCallback((chip: WordChip) => {
+    if (checked) return;
+    setAnswer(prev => prev.filter(c => c.key !== chip.key));
+    setPool(prev => [...prev, chip]);
+  }, [checked]);
+
+  const isCorrect = useMemo(() => {
+    if (!current || answer.length !== current.words.length) return false;
+    return answer.every((chip, i) => chip.word === current.words[i]);
+  }, [answer, current]);
+
+  const handleCheck = useCallback(() => {
+    if (answer.length === 0) return;
+    setChecked(true);
+    setAnswered(prev => prev + 1);
+    if (isCorrect) setScore(prev => prev + 1);
+  }, [answer, isCorrect]);
+
+  const handleNext = useCallback(() => {
+    if (index < exercises.length - 1) {
+      setIndex(prev => prev + 1);
+    } else {
+      setIndex(0);
+    }
+  }, [index, exercises.length]);
+
+  const handleReset = useCallback(() => {
+    setScore(0);
+    setAnswered(0);
+    setIndex(0);
+    setupExercise(exercises[0]);
+  }, [exercises, setupExercise]);
+
+  if (!current) {
+    return (
+      <div className="text-center py-16">
+        <Shuffle size={48} className="mx-auto text-muted-foreground/40 mb-4" />
+        <p className="text-muted-foreground">Aucun exercice trouvé pour ce filtre.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          onClick={() => setFilterLevel('all')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            filterLevel === 'all'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Tous
+        </button>
+        {allLevels.map(level => (
+          <button
+            key={level}
+            onClick={() => setFilterLevel(level)}
+            className={`px-4 py-2 rounded-lg text-sm font-mono font-bold transition-all ${
+              filterLevel === level
+                ? `${LEVEL_COLORS[level].bg} border ${LEVEL_COLORS[level].border} ${LEVEL_COLORS[level].text}`
+                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {level}
+          </button>
+        ))}
+      </div>
+
+      <div className="max-w-2xl mx-auto">
+        {/* Progress */}
+        <div className="mb-6 panel-hud circuit-corner rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="data-label">Phrase</span>
+              <span className="text-sm font-mono text-foreground">{index + 1} / {exercises.length}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="data-label">Score</span>
+              <span className="text-sm font-mono text-primary">{score}/{answered}</span>
+            </div>
+          </div>
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-500"
+              style={{ width: `${((index + 1) / exercises.length) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Exercise Card */}
+        <div className={`bg-card rounded-xl border border-border p-6 mb-4 panel-hud circuit-corner tint-${current.level.toLowerCase()}`}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-mono font-bold ${
+              LEVEL_COLORS[current.level].bg
+            } ${LEVEL_COLORS[current.level].text} ${LEVEL_COLORS[current.level].border}`}>
+              {current.level}
+            </div>
+            <span className="data-label">Reconstitue la phrase</span>
+          </div>
+
+          <p className="text-sm text-muted-foreground mb-5 italic">"{current.translation}"</p>
+
+          {/* Answer Zone */}
+          <div className={`min-h-[64px] rounded-lg border-2 border-dashed p-3 flex flex-wrap gap-2 mb-4 transition-colors ${
+            checked
+              ? isCorrect ? 'border-emerald-400 bg-emerald-500/5' : 'border-destructive bg-destructive/5'
+              : 'border-border'
+          }`}>
+            {answer.length === 0 && (
+              <span className="text-xs text-muted-foreground/50 self-center">Touche les mots ci-dessous pour construire la phrase...</span>
+            )}
+            {answer.map(chip => (
+              <button
+                key={chip.key}
+                onClick={() => moveToPool(chip)}
+                disabled={checked}
+                className={`px-3 py-1.5 rounded-lg border text-sm font-mono transition-all active:scale-[0.95] ${
+                  checked
+                    ? 'border-border bg-muted/50 cursor-default'
+                    : 'border-primary bg-primary/10 hover:bg-primary/20 cursor-pointer'
+                }`}
+              >
+                {chip.word}
+              </button>
+            ))}
+          </div>
+
+          {/* Word Pool */}
+          <div className="flex flex-wrap gap-2 mb-2">
+            {pool.map(chip => (
+              <button
+                key={chip.key}
+                onClick={() => moveToAnswer(chip)}
+                disabled={checked}
+                className="px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-sm font-mono hover:bg-accent/10 transition-all active:scale-[0.95] cursor-pointer disabled:opacity-40"
+              >
+                {chip.word}
+              </button>
+            ))}
+          </div>
+
+          {/* Result */}
+          {checked && (
+            <div className={`mt-4 p-4 rounded-lg ${
+              isCorrect ? 'bg-emerald-500/10 border border-emerald-400/30' : 'bg-amber-500/10 border border-amber-400/30'
+            }`}>
+              <p className="text-sm font-semibold mb-1 flex items-center gap-2">
+                {isCorrect ? (
+                  <><CheckCircle2 size={16} className="text-emerald-400" /> Richtig !</>
+                ) : (
+                  <><XCircle size={16} className="text-amber-400" /> Pas tout à fait...</>
+                )}
+              </p>
+              {!isCorrect && (
+                <p className="text-sm font-mono text-foreground mb-2">
+                  {current.words.join(' ')}
+                </p>
+              )}
+              {current.hint && (
+                <p className="text-xs text-muted-foreground">💡 {current.hint}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={handleReset}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-card text-sm font-medium hover:bg-accent/10 transition-all"
+          >
+            <RotateCcw size={16} />
+            Recommencer
+          </button>
+          {!checked ? (
+            <button
+              onClick={handleCheck}
+              disabled={answer.length === 0}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Vérifier
+            </button>
+          ) : (
+            <button
+              onClick={handleNext}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-all active:scale-[0.97]"
+            >
+              Suivant <ArrowRight size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 2. CORRECTION DE TEXTE LIBRE (IA)
+// ══════════════════════════════════════════════════════════════════════════
+
+interface WritingError {
+  original: string;
+  correction: string;
+  category: string;
+  explanation: string;
+}
+
+interface WritingResult {
+  correctedText: string;
+  estimatedLevel: string;
+  score: number;
+  errors: WritingError[];
+  strengths: string[];
+  toReview: string[];
+  feedback: string;
+}
+
+const MIN_CHARS = 20;
+const MAX_CHARS = 7000;
+
+const CATEGORY_LABELS: Record<string, string> = {
+  orthographe: 'Orthographe',
+  grammaire: 'Grammaire',
+  conjugaison: 'Conjugaison',
+  déclinaison: 'Déclinaison',
+  syntaxe: 'Syntaxe',
+  ponctuation: 'Ponctuation',
+  vocabulaire: 'Vocabulaire',
+};
+
+function WritingCheck() {
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<WritingResult | null>(null);
+
+  const charCount = text.trim().length;
+  const tooShort = charCount > 0 && charCount < MIN_CHARS;
+  const tooLong = charCount > MAX_CHARS;
+  const canSubmit = charCount >= MIN_CHARS && charCount <= MAX_CHARS && !loading;
+
+  const handleSubmit = useCallback(async () => {
+    if (!canSubmit) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const response = await fetch('/api/writing/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || `Erreur serveur (${response.status})`);
+      }
+
+      setResult(data as WritingResult);
+    } catch (err) {
+      setError((err as Error).message || 'Une erreur est survenue. Réessaie.');
+    } finally {
+      setLoading(false);
+    }
+  }, [canSubmit, text]);
+
+  const handleReset = useCallback(() => {
+    setText('');
+    setResult(null);
+    setError(null);
+  }, []);
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      {!result ? (
+        <div className="bg-card rounded-xl border border-border p-6 panel-hud circuit-corner">
+          <div className="flex items-center gap-2 mb-3">
+            <PenLine size={16} className="text-emerald-400" />
+            <span className="data-label">Rédige ton texte en allemand</span>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Écris entre {MIN_CHARS} et {MAX_CHARS} caractères sur le sujet de ton choix. Notre tuteur IA
+            corrigera tes fautes et te dira précisément ce qu'il te reste à travailler.
+          </p>
+
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Schreibe hier deinen Text auf Deutsch..."
+            rows={10}
+            disabled={loading}
+            className="w-full px-4 py-3 rounded-xl bg-input border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-muted-foreground/50 transition-all resize-y"
+          />
+
+          <div className="flex items-center justify-between mt-2 mb-4">
+            <span className={`text-xs font-mono ${
+              tooShort || tooLong ? 'text-destructive' : 'text-muted-foreground'
+            }`}>
+              {charCount} / {MAX_CHARS} caractères
+              {tooShort && ` — encore ${MIN_CHARS - charCount} pour atteindre le minimum`}
+              {tooLong && ` — ${charCount - MAX_CHARS} de trop`}
+            </span>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3 mb-4">
+              <AlertTriangle size={16} className="text-destructive shrink-0 mt-0.5" />
+              <p className="text-xs text-destructive leading-relaxed">{error}</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <><Loader2 size={16} className="animate-spin" /> Correction en cours...</>
+            ) : (
+              <><Send size={16} /> Corriger mon texte</>
+            )}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Score */}
+          <div className="bg-card rounded-xl border border-border p-6 panel-hud circuit-corner text-center">
+            <Trophy size={40} className="mx-auto text-amber-400 mb-3" />
+            <div className="text-4xl font-display font-bold text-primary mb-1">{result.score}/100</div>
+            <p className="text-sm text-muted-foreground font-mono mb-1">
+              Niveau estimé : <span className="text-foreground font-bold">{result.estimatedLevel}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {result.errors.length === 0
+                ? 'Aucune faute détectée ! 🎉'
+                : `${result.errors.length} point${result.errors.length > 1 ? 's' : ''} à corriger`}
+            </p>
+          </div>
+
+          {/* Feedback global */}
+          <div className="bg-card rounded-xl border border-border p-5 panel-hud circuit-corner">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={16} className="text-violet-400" />
+              <span className="data-label">Feedback du tuteur</span>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">{result.feedback}</p>
+          </div>
+
+          {/* Points forts */}
+          {result.strengths.length > 0 && (
+            <div className="bg-emerald-500/5 rounded-xl border border-emerald-400/20 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <ThumbsUp size={16} className="text-emerald-400" />
+                <span className="data-label">Points forts</span>
+              </div>
+              <ul className="space-y-1.5">
+                {result.strengths.map((s, i) => (
+                  <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* À travailler */}
+          {result.toReview.length > 0 && (
+            <div className="bg-amber-500/5 rounded-xl border border-amber-400/20 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <BookOpenCheck size={16} className="text-amber-400" />
+                <span className="data-label">Ce qu'il te reste à travailler</span>
+              </div>
+              <ul className="space-y-1.5">
+                {result.toReview.map((s, i) => (
+                  <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                    <ArrowRight size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Détail des erreurs */}
+          {result.errors.length > 0 && (
+            <div className="bg-card rounded-xl border border-border p-5 panel-hud circuit-corner">
+              <div className="flex items-center gap-2 mb-4">
+                <XCircle size={16} className="text-destructive" />
+                <span className="data-label">Corrections détaillées</span>
+              </div>
+              <div className="space-y-3">
+                {result.errors.map((err, i) => (
+                  <div key={i} className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-[10px] font-mono font-bold border border-destructive/20">
+                        {CATEGORY_LABELS[err.category] || err.category}
+                      </span>
+                    </div>
+                    <p className="text-sm font-mono mb-1">
+                      <span className="text-destructive line-through">{err.original}</span>
+                      {' → '}
+                      <span className="text-emerald-400">{err.correction}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">{err.explanation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Texte corrigé */}
+          <div className="bg-card rounded-xl border border-border p-5 panel-hud circuit-corner">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 size={16} className="text-primary" />
+              <span className="data-label">Ton texte corrigé</span>
+            </div>
+            <p className="text-sm font-mono leading-relaxed whitespace-pre-wrap">{result.correctedText}</p>
+          </div>
+
+          <button
+            onClick={handleReset}
+            className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-border bg-card text-sm font-medium hover:bg-accent/10 transition-all"
+          >
+            <RotateCcw size={16} />
+            Écrire un nouveau texte
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
